@@ -30,3 +30,19 @@
 *.exe
 *.out
 *.app
+
+# Visual Studio stuff
+*.suo
+*.db
+*.opendb
+*.ipch
+*.sln
+*.vcxproj
+*.filters
+*.user
+*.log
+*.tlog
+*.lastbuildstate
+*.idb
+*.pdb
+*.ilk
