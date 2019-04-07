@@ -248,7 +248,6 @@ struct PlatformWindowData
 		last_pos  = pos;
 		last_size = size;
 		
-
 		title = title_;
 		return true;
 	}
@@ -1261,7 +1260,7 @@ struct MainWindow
 		bool m = (w == width()) && (h == height());
 		if(!m && sc != StateChange::Minimized)
 		{
-			//printf("realloc buffers\n");
+			printf("realloc buffers\n");
 			free_buffers();
 			renderer.resize(w, h);
 			window.size.w = w; window.size.h = h;
