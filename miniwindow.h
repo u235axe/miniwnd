@@ -7,6 +7,7 @@
 #include <locale>
 #include <chrono>
 #include <functional>
+#include <cmath>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -69,18 +70,20 @@ struct Mouse
 	bool left, middle, right;
 };
 
+enum StateChange{ Restored, Minimized, Maximized, Resized, Unknown };
+
 namespace MainWindowDetails
 {
 	struct ProcRelay
 	{
 		Mouse mouse;
 
-		std::function<void(void)>           onRender;
-		std::function<void(int, int, bool)> onResize;
-		std::function<void(void)>           onExit;
-		std::function<void(Mouse const&)>   onMouseEvent;
+		std::function<void(void)>                  onRender;
+		std::function<void(int, int, StateChange)> onResize;
+		std::function<void(void)>                  onExit;
+		std::function<void(Mouse const&)>          onMouseEvent;
 
-		ProcRelay():onRender{[]{}}, onResize{[](int, int, bool){}}, onExit{[]{}}, onMouseEvent{[](Mouse const&){}}{}
+		ProcRelay():onRender{[]{}}, onResize{[](int, int, StateChange){}}, onExit{[]{}}, onMouseEvent{[](Mouse const&){}}{}
 
 		void mouse_trigger(Mouse::Event e){ mouse.event = e; onMouseEvent(mouse); }
 		void mouse_xy    (int x, int y){ mouse.x = x; mouse.y = y; mouse_trigger(Mouse::Move      ); }
@@ -95,6 +98,14 @@ namespace MainWindowDetails
 	/*inline*/ ProcRelay relay;
 
 #ifdef _WIN32
+	static StateChange fromWPARAM(WPARAM wp)
+	{
+		if     (wp == SIZE_RESTORED ){ return StateChange::Restored; }
+		else if(wp == SIZE_MINIMIZED){ return StateChange::Minimized; }
+		else if(wp == SIZE_MAXIMIZED){ return StateChange::Maximized; }
+		return StateChange::Unknown;
+	}
+
 	static LRESULT CALLBACK Proc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		switch(message)
@@ -109,7 +120,7 @@ namespace MainWindowDetails
 		case WM_MOUSEWHEEL:  relay.mouse_z(GET_WHEEL_DELTA_WPARAM(wParam)/WHEEL_DELTA);  break;
 
 		case WM_ERASEBKGND:  return 1;
-		case WM_SIZE:        relay.onResize(LOWORD(lParam), HIWORD(lParam), wParam == SIZE_MINIMIZED); break;
+		case WM_SIZE:        relay.onResize(LOWORD(lParam), HIWORD(lParam), fromWPARAM(wParam)); break;
 
 		case WM_CLOSE:     relay.onExit();   break;
 		case WM_PAINT:     relay.onRender(); break;
@@ -118,7 +129,7 @@ namespace MainWindowDetails
 		return 0;
 	}
 #else
-	static void Proc(Display* display, Window& handle, XEvent e, Size2D const& size, bool& isResizing)
+	static void Proc(Display* /*display*/, Window& /*handle*/, XEvent e, Size2D const& size, bool& isResizing)
 	{
 		switch(e.type)
 		{
@@ -151,13 +162,14 @@ namespace MainWindowDetails
 		}
 		case ResizeRequest:
 		{
-			XResizeRequestEvent re = e.xresizerequest;
-			printf("RR\n");
+			//XResizeRequestEvent re = e.xresizerequest;
+			//printf("RR\n");
+			break;
 		}
 		case ConfigureRequest:
 		{
-			XConfigureRequestEvent re = e.xconfigurerequest;
-			printf("CR\n");
+			//XConfigureRequestEvent re = e.xconfigurerequest;
+			//printf("CR\n");
 			break;
 		}
 		case ConfigureNotify:
@@ -172,7 +184,7 @@ namespace MainWindowDetails
 			{
 				isResizing = true;
 				printf("CN Resize %i %i\n", re.width, re.height);
-				relay.onResize(re.width, re.height, true);
+				relay.onResize(re.width, re.height, StateChange::Resized);
 			}
 			break;
 		}
@@ -185,29 +197,33 @@ namespace MainWindowDetails
 
 struct PlatformWindowData
 {
+	enum State{ Invalid, Normal, Minimized, Maximized, Hidden, Fullscreen };
+
 	Pos2D  pos,  last_pos;
 	Size2D size, last_size;
+	State state, last_state;
 	std::wstring title;
+	
 #ifdef _WIN32
-	WNDCLASS wc;
+	WNDCLASSW wc;
 	DWORD type;
 	DWORD style;
 	HWND handle;
 	HICON icon;
 	bool eventDriven;
-	PlatformWindowData():handle{nullptr}, eventDriven{true}{}
+	PlatformWindowData():handle{nullptr}, eventDriven{true}, state{State::Invalid}, last_state{State::Invalid}{}
 
-	bool open(std::wstring const& title_, Pos2D pos_, Size2D size_, bool Decorated_, bool FullScreen_)
+	bool open(std::wstring const& title_, Pos2D pos_, Size2D size_, bool Decorated_/*, bool FullScreen_*/)
 	{
 		using namespace MainWindowDetails;
-		wc = WNDCLASS{0};
+		wc = WNDCLASSW{0};
 		wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 		wc.lpfnWndProc   = Proc;
 		wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
 		wc.hbrBackground = (HBRUSH)(BLACK_BRUSH);
 		wc.lpszClassName = L"MainWindowClass";
 
-		if( !RegisterClass(&wc) ){ return false; }
+		if( !RegisterClassW(&wc) ){ return false; }
 
 		type  = Decorated_ ? WS_OVERLAPPEDWINDOW : WS_POPUP;
 		style = WS_CLIPCHILDREN  | WS_CLIPSIBLINGS;
@@ -220,11 +236,18 @@ struct PlatformWindowData
 		pos.y = rect0.top;
 		size.h = rect0.bottom - rect0.top;
 
-		handle = CreateWindowEx(0, wc.lpszClassName, title_.c_str(), style | type, rect0.left, rect0.top, rect0.right - rect0.left, rect0.bottom - rect0.top, 0, 0, nullptr, (LPVOID)&relay);
+		last_state = State::Invalid;
+		state = State::Invalid;
+
+		handle = CreateWindowExW(0, wc.lpszClassName, title_.c_str(), style | type, rect0.left, rect0.top, rect0.right - rect0.left, rect0.bottom - rect0.top, 0, 0, nullptr, (LPVOID)&relay);
 		if( !handle ){ return false; }
+
+		last_state = State::Normal;
+		state = State::Hidden;
 
 		last_pos  = pos;
 		last_size = size;
+		
 
 		title = title_;
 		return true;
@@ -316,17 +339,17 @@ struct PlatformWindowData
 	}
 
 	void redraw()   const { RedrawWindow(handle, 0, 0, RDW_ERASE|RDW_INVALIDATE); }
-	void hide()     const { ShowWindow(handle, SW_HIDE); }
-	void show()     const { ShowWindow(handle, SW_SHOW); }
-	void minimize()      { last_pos = pos; last_size = size; ShowWindow(handle, SW_MINIMIZE); }
-	void maximize()      { last_pos = pos; last_size = size; ShowWindow(handle, SW_MAXIMIZE); }
-	void restore() const { ShowWindow(handle, SW_RESTORE); }
-	void quit()     const { PostQuitMessage(0); }
-	bool close(){ int res = DestroyWindow(handle); handle = nullptr; eventDriven = true; return res != 0; }
+	void hide()     { if(state != State::Invalid && state != State::Hidden){ ShowWindow(handle, SW_HIDE); last_state = state; state = State::Hidden; } }
+	void show()     { if(state != State::Invalid && state == State::Hidden){ ShowWindow(handle, SW_SHOW); std::swap(state, last_state); } }
+	void minimize() { if(state != State::Invalid || state != State::Minimized){ last_pos = pos; last_size = size; ShowWindow(handle, SW_MINIMIZE);           last_state = state; state = State::Minimized; } }
+	void maximize() { if(state != State::Invalid || state != State::Maximized){ last_pos = pos; last_size = size; ShowWindow(handle, SW_MAXIMIZE); redraw(); last_state = state; state = State::Maximized; } }
+	void restore()  { if(state != State::Invalid ){ ShowWindow(handle, SW_RESTORE); state = last_state; pos = last_pos; size = last_size; } }
+	void quit()     { PostQuitMessage(0); }
+	bool close(){ int res = DestroyWindow(handle); handle = nullptr; eventDriven = true; state = State::Invalid; return res != 0; }
 
-	bool fullscreen(/*bool b*/)
+	/*bool fullscreen(bool b)
 	{
-		/*bool res;
+		bool res;
 		if(b)
 		{
 			last_pos = pos;
@@ -353,9 +376,9 @@ struct PlatformWindowData
 			SetWindowPos(handle, HWND_NOTOPMOST, last_pos.x, last_pos.y, last_size.w, last_size.h, SWP_SHOWWINDOW);
 			ShowWindow(handle, SW_RESTORE);
 			return res;
-		}*/
+		}
 		return true;
-	}
+	}*/
 #else
 	Display* display;
 	Visual* visual;
@@ -385,7 +408,7 @@ struct PlatformWindowData
 		return false;
 	}
 
-	bool open(std::wstring const& title_, Pos2D pos_, Size2D size_, bool Decorated_, bool FullScreen_)
+	bool open(std::wstring const& title_, Pos2D pos_, Size2D size_, bool Decorated_/*, bool FullScreen_*/)
 	{
 		printf("Creating window\n");
 
@@ -411,7 +434,7 @@ struct PlatformWindowData
 			printf("No TrueColor...\n");
 		}
 
-		XSetWindowAttributes wa{0};
+		XSetWindowAttributes wa{};
 		wa.colormap = XCreateColormap(display, DefaultRootWindow(display), visual, AllocNone);
 		//wa.background_pixel = 0;
 		wa.border_pixel = 0;
@@ -462,7 +485,7 @@ struct PlatformWindowData
 
 		auto sendExposeEvent = [&]()
 		{
-			XExposeEvent xee{0};
+			XExposeEvent xee{};
 			xee.type = Expose;
 			xee.send_event = True;
 			xee.display = display;
@@ -478,7 +501,7 @@ struct PlatformWindowData
 			if(eventDriven)
 			{
 				XNextEvent(display, &e);
-				if(e.type == ClientMessage && e.xclient.message_type == AWM_PROTOCOLS && e.xclient.data.l[0] == AWM_DELETE_WINDOW){ isQuit = true; MainWindowDetails::relay.onExit(); break; }
+				if(e.type == ClientMessage && e.xclient.message_type == AWM_PROTOCOLS && (Atom)(e.xclient.data.l[0]) == AWM_DELETE_WINDOW){ isQuit = true; MainWindowDetails::relay.onExit(); break; }
 				else{ MainWindowDetails::Proc(display, handle, e, size, isResizing); }
 				//step();
 				//printf("while 1\n");
@@ -486,7 +509,7 @@ struct PlatformWindowData
 			}
 			else
 			{
-				auto res = True;
+				//auto res = True;
 				//while(res == True && !isQuit)
 				{
 					while(XEventsQueued(display, QueuedAlready) > 0)
@@ -500,7 +523,7 @@ struct PlatformWindowData
 							if(e.xclient.message_type == AWM_PROTOCOLS)
 							{
 								printf("WM_PROTOCOLS ");
-								if(e.xclient.data.l[0] == AWM_DELETE_WINDOW){ printf("AWM_DELETE_WINDOW\n"); isQuit = true; MainWindowDetails::relay.onExit(); break; }
+								if( (Atom)(e.xclient.data.l[0]) == AWM_DELETE_WINDOW){ printf("AWM_DELETE_WINDOW\n"); isQuit = true; MainWindowDetails::relay.onExit(); break; }
 								else{ printf("Unknown protocol message %zi\n", e.xclient.data.l[0]); }
 							}
 							else if(e.xclient.message_type == 424242){ nredrawproc = e.xclient.data.l[0]; /*printf("Redraw processed: %zi\n", nredrawproc);*/ }
@@ -604,7 +627,7 @@ struct PlatformWindowData
 
 		//XSync(display, False);
 
-		/*{
+		{
 			XEvent xev{};
 			Atom wm_state  =  XInternAtom(display, "_NET_WM_STATE", False);
 			Atom max_horz  =  XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
@@ -619,9 +642,9 @@ struct PlatformWindowData
 			xev.xclient.data.l[2] = max_vert;
 			xev.xclient.data.l[3] = 1;
 			XSendEvent(display, DefaultRootWindow(display), False, SubstructureNotifyMask, &xev);
-		}*/
+		}
 
-		{
+		/*{
 			XEvent xev{};
 			Atom wm_state      = XInternAtom(display, "_NET_WM_STATE", False);
 			Atom wm_fullscreen = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False);
@@ -635,7 +658,7 @@ struct PlatformWindowData
 			xev.xclient.data.l[2] = 0;
 			xev.xclient.data.l[3] = 1;
 			XSendEvent(display, DefaultRootWindow(display), False, SubstructureNotifyMask, &xev);
-		}
+		}*/
 		//XSync(display, False);
 		
 		XMoveResizeWindow(display, handle, last_pos.x, last_pos.y, last_size.w, last_size.h);
@@ -1128,9 +1151,9 @@ struct MainWindow
 #endif
 
 	std::function<void(void)> onAppStep, onAppExit;
-	std::function<void(int, int, bool)> onAppResize;
+	std::function<void(int, int, StateChange)> onAppResize;
 	std::function<void(SoftwareRenderer&)> onAppRender; 
-	MainWindow():onAppRender{[](SoftwareRenderer&){}}, onAppStep{[]{}}, onAppExit{[]{}}, onAppResize{[](int, int, bool){}}
+	MainWindow():onAppStep{[]{}}, onAppExit{[]{}}, onAppResize{[](int, int, StateChange){}}, onAppRender{[](SoftwareRenderer&){}}
 	{
 #ifdef _WIN32
 		hdc = 0; bmp = 0; oldbmp = 0;
@@ -1143,14 +1166,14 @@ struct MainWindow
 	auto height() const { return window.size.h; }
 
 	template<typename FInit>
-	bool open(std::wstring const& title, Pos2D pos_, Size2D size_, bool Decorated_, bool FullScreen_, FInit&& finit)
+	bool open(std::wstring const& title, Pos2D pos_, Size2D size_, bool Decorated_, /*bool FullScreen_, */FInit&& finit)
 	{
 		using namespace MainWindowDetails;
-		if( !window.open(title, pos_, size_, Decorated_, FullScreen_) ){ return false; }
+		if( !window.open(title, pos_, size_, Decorated_/*, FullScreen_*/) ){ return false; }
 
 		relay.onRender = [&]{ this->onRender(); };
 		relay.onExit   = [&]{ this->onExit(); };
-		relay.onResize = [&](int w, int h, bool m){ this->onResize(w, h, m); };
+		relay.onResize = [&](int w, int h, StateChange sc){ this->onResize(w, h, sc); };
 
 		renderer.init(width(), height());
 		allocate_buffers();
@@ -1158,7 +1181,7 @@ struct MainWindow
 #else
 		gc = XCreateGC(window.display, window.handle, 0, 0);
 #endif
-		onResize(width(), height(), false);
+		onResize(width(), height(), StateChange::Resized);
 
 		if( !finit() ){ return false; }
 		window.show();
@@ -1232,19 +1255,20 @@ struct MainWindow
 #endif
 	}
 
-	void onResize(int w, int h, bool)
+	void onResize(int w, int h, StateChange sc)
 	{
 		//printf("resize\n");
 		bool m = (w == width()) && (h == height());
-		if(!m)
+		if(!m && sc != StateChange::Minimized)
 		{
+			//printf("realloc buffers\n");
 			free_buffers();
 			renderer.resize(w, h);
 			window.size.w = w; window.size.h = h;
 			allocate_buffers();
 			
 		}
-		onAppResize(w, h, m);
+		onAppResize(w, h, sc);
 		if(!m)
 		{
 			//printf("stepping and redrawing\n");

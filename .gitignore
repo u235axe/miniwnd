@@ -44,5 +44,13 @@
 *.tlog
 *.lastbuildstate
 *.idb
+*.ipdb
 *.pdb
 *.ilk
+*.iobj
+*.bin
+
+#cmake stuff
+*.cmake
+
+build/
