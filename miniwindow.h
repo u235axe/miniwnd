@@ -177,19 +177,19 @@ namespace MainWindowDetails
 			XConfigureEvent re = e.xconfigure;
 			if( size.w == re.width && size.h == re.height )
 			{
-				printf("CN Move %i %i\n", re.x, re.y);
+				//printf("CN Move %i %i\n", re.x, re.y);
 				//XMoveWindow(display, handle, 0, 0);
 			}//move only
 			else
 			{
 				isResizing = true;
-				printf("CN Resize %i %i\n", re.width, re.height);
+				//printf("CN Resize %i %i\n", re.width, re.height);
 				relay.onResize(re.width, re.height, StateChange::Resized);
 			}
 			break;
 		}
 		//CM handled outside.
-		case Expose:        printf("Expose "); relay.onRender(); break;
+		case Expose: relay.onRender(); break;
 		}
 	}
 #endif
@@ -270,7 +270,7 @@ struct PlatformWindowData
 		HDC     tmpdc  = CreateCompatibleDC(hdcScreen);
 		HBITMAP bmp    = CreateBitmap(img.w, img.h, 1, 32, img.data.data());
 		HGDIOBJ tmpbmp = SelectObject(tmpdc, bmp);
-		auto b1 = BitBlt(hdcMem, 0, 0, img.w, img.h, tmpdc, 0, 0, SRCCOPY);
+		BitBlt(hdcMem, 0, 0, img.w, img.h, tmpdc, 0, 0, SRCCOPY);
 		
 		HBITMAP hbmpMask = CreateCompatibleBitmap(hdcScreen, img.w, img.h);
 		ICONINFO ii;
@@ -289,7 +289,7 @@ struct PlatformWindowData
 		DeleteDC(hdcMem);
 		ReleaseDC(NULL, hdcScreen);
 
-		auto res = SetClassLongPtr(handle, GCLP_HICON, (LONG_PTR)icon);
+		SetClassLongPtr(handle, GCLP_HICON, (LONG_PTR)icon);
 
 		return true;
 	}
@@ -521,8 +521,8 @@ struct PlatformWindowData
 
 							if(e.xclient.message_type == AWM_PROTOCOLS)
 							{
-								printf("WM_PROTOCOLS ");
-								if( (Atom)(e.xclient.data.l[0]) == AWM_DELETE_WINDOW){ printf("AWM_DELETE_WINDOW\n"); isQuit = true; MainWindowDetails::relay.onExit(); break; }
+								//printf("WM_PROTOCOLS ");
+								if( (Atom)(e.xclient.data.l[0]) == AWM_DELETE_WINDOW){ /*printf("AWM_DELETE_WINDOW\n");*/ isQuit = true; MainWindowDetails::relay.onExit(); break; }
 								else{ printf("Unknown protocol message %zi\n", e.xclient.data.l[0]); }
 							}
 							else if(e.xclient.message_type == 424242){ nredrawproc = e.xclient.data.l[0]; /*printf("Redraw processed: %zi\n", nredrawproc);*/ }
@@ -585,8 +585,8 @@ struct PlatformWindowData
 		printf("x= %i, y= %i, w= %i, h= %i\n", pos.x, pos.y, size.w, size.h);
 	}*/
 
-	void redraw() { printf("Redraw req\n"); needRedraw = true; /*XSync(display, False);*/ }
-	void show() const { printf("show\n"); XMapRaised(display, handle); }
+	void redraw() { /*printf("Redraw req\n");*/ needRedraw = true; /*XSync(display, False);*/ }
+	void show() const { /*printf("show\n");*/ XMapRaised(display, handle); }
 	void hide() const { XUnmapWindow(display, handle); }
 	void minimize() { last_pos = pos; last_size = size; XIconifyWindow(display, handle, 0); }
 	void maximize()

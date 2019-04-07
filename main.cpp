@@ -63,8 +63,8 @@ struct App
 		{
 			std::mt19937 mt(42);
 			std::uniform_real_distribution<float> d(0.0, 1.0f);
-			table[0].fill1([&](int){ return d(mt) < 0.5 ? 0 : 1; }); 
-			table[1].fill1([ ](int){ return 0; });
+			table[0].fill1([&](int)->char{ return d(mt) < 0.5 ? 0 : 1; }); 
+			table[1].fill1([ ](int)->char{ return 0; });
 		}
 	}
 
@@ -141,6 +141,5 @@ struct App
 int main()
 //#endif
 {
-	std::cout << "Let the fun begin!\n";
 	return App{}.enterApp();
 }
