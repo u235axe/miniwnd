@@ -28,5 +28,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17
                                                  CXX_STANDARD_REQUIRED ON
                                                  CXX_EXTENSIONS OFF)
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:_UNICODE UNICODE>)
+
 target_compile_options(${PROJECT_NAME} PRIVATE $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>:-Wall -Wextra -pedantic>
                                                $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->)
