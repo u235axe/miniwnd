@@ -806,6 +806,28 @@ struct SoftwareRenderer
 	}
 
 	template<typename T, typename F>
+	void lineplot(int x, int y, int w, int h, T xmin, T xmax, T ymin, T ymax, Color col, F&& f)
+	{
+		auto n = std::abs(w);
+		if(n == 0){ return; }
+	
+		auto yl = f(xmin);
+		auto iyl = y + h - (yl - ymin) / (ymax - ymin) * h;
+		for(int i=1; i<n; ++i)
+		{
+			T xc = ((T)i/(T)n)*(xmax - xmin) + xmin;
+			auto yc = f(xc);
+			if(is_finite(yl) && is_finite(yc))
+			{
+				auto iyc = y + h - (yc - ymin) / (ymax - ymin) * h;
+				line(x+i-1, (int)iyl, x+i, (int)iyc, [&](auto){ return col; });
+				iyl = iyc;
+				yl = yc;
+			}
+		}
+	}
+
+	template<typename T, typename F>
 	void lineplot(int x, int y, int w, int h, T xmin, T xmax, Color col, F&& f)
 	{
 		using R = decltype(f(xmin));
@@ -1279,5 +1301,6 @@ struct MainWindow
 	void onExit()
 	{
 		onAppExit();
+		quit();
 	}
 };

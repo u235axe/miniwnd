@@ -9,10 +9,7 @@ if (UNIX)
   find_package(X11 REQUIRED)
 endif ()
 
-message(STATUS "X11_INCLUDE_DIR: ${X11_INCLUDE_DIR}")
-message(STATUS "X11_LIBRARIES: ${X11_LIBRARIES}")
-
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(${PROJECT_NAME} main_game_of_life.cpp)
 
 target_include_directories (${PROJECT_NAME} PRIVATE $<$<PLATFORM_ID:Linux>:${X11_INCLUDE_DIR}>)
 

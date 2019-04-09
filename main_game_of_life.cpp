@@ -72,8 +72,8 @@ struct App
 	{
 		x = 0; y = 0, z = 0;
 
-		live = color(64, 250, 128);
-		dead = color(64, 32, 48);
+		live = color(200, 200, 200);
+		dead = color(64, 64, 64);
 	}
 
 	int enterApp()
@@ -93,7 +93,7 @@ struct App
 			else if(m.event == Mouse::RightDown ){            std::cout << "Mouse Right Down\n" ; }
 			else if(m.event == Mouse::RightUp   ){            std::cout << "Mouse Right Up\n"   ; }
 		});
-		wnd.resizeHandler([&](int w, int h, bool/* b*/)
+		wnd.resizeHandler([&](int w, int h, StateChange /*sc*/)
 		{
 			ResizeTables(w-32, h-32);
 			printf("Resize: %i %i\n", w, h);
@@ -119,14 +119,11 @@ struct App
 			});
 			idx = 1 - idx;
 		});
-		wnd.exitHandler([&]
-		{
-			wnd.quit(); std::cout << "App closing\n";
-		});
+		wnd.exitHandler([&]{ });
 
 		wnd.renderHandler( [&](SoftwareRenderer& r)
 		{
-			r.forall_pixels([](auto, auto, auto){ return color(0, 0, 64); });
+			r.forall_pixels([](auto, auto, auto){ return color(255, 255, 255); });
 			r.plot_by_index(16, 16, table[idx].w, table[idx].h, [&](auto x, auto y){ return table[idx](x, y) == 0 ? dead : live; });
 		});
 
