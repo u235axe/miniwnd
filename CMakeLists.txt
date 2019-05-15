@@ -9,7 +9,9 @@ if (UNIX)
   find_package(X11 REQUIRED)
 endif ()
 
-add_executable(${PROJECT_NAME} main_game_of_life.cpp)
+#main_lotka_volterra.cpp
+#main_game_of_life.cpp
+add_executable(${PROJECT_NAME} main_parallel_game_of_life.cpp)
 
 target_include_directories (${PROJECT_NAME} PRIVATE $<$<PLATFORM_ID:Linux>:${X11_INCLUDE_DIR}>)
 
